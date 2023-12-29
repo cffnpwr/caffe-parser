@@ -9,7 +9,8 @@
         "ms-azuretools.vscode-docker",
         "yzhang.markdown-all-in-one",
         "EditorConfig.EditorConfig",
-        "Swellaby.rust-pack"
+        "Swellaby.rust-pack",
+        "vadimcn.vscode-lldb"
       ]
     }
   }

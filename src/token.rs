@@ -1,43 +1,45 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) enum Token {
-    // Block
-    Heading(HeadingLevel, String),
-    Paragraph(String),
-    BlockQuote(String),
-    CodeBlock(String, String),
-    List(ListType, Vec<String>),
-    HorizontalRule,
-
-    // Inline
-    Bold(String),
-    Italic(String),
-    Code(String),
-    Link(String, Option<String>, String),
-    Image(String, Option<String>, String),
-
-    // Test
-    Text(String),
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Token {
+    pub(crate) token_type: TokenType,
+    pub(crate) raw: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) enum ListType {
-    Ordered,
-    Unordered,
-    Checked,
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum TokenType {
+    ThemanticBreak,
+    ATXHeading(HeadingLevel),
+    SetextHeading(HeadingLevel),
+    IndentedCodeBlock,
+    FencedCodeBlockOpening,
+    FencedCodeBlockClosing,
+    HTMLBlock,
+    LinkReferenceDefinition(String, String, Option<String>),
+    BlankLine,
+    BlockQuote,
+    BulletListItem,
+    OrderedListItem,
+    CodeSpan,
+    Emphasis(DelimiterType),
+    LinkTextOpening,
+    LinkTextClosing,
+    LinkDestOpening,
+    LinkDestClosing,
+    ImageTextOpening,
+    AutoLink,
+    HardLineBreak,
+    SoftLineBreak,
+    Text,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum HeadingLevel {
-    H1 = 1,
+    H1,
     H2,
     H3,
     H4,
     H5,
     H6,
 }
-
 impl From<u8> for HeadingLevel {
     fn from(level: u8) -> Self {
         match level {
@@ -50,4 +52,11 @@ impl From<u8> for HeadingLevel {
             _ => unreachable!(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum DelimiterType {
+    RightFlanking,
+    LeftFlanking,
+    Both,
 }
