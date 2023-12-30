@@ -1,8 +1,18 @@
 mod emphasis;
+mod html;
 
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+use self::{emphasis::tokenize_emphasis, html::tokenize_html};
 use crate::token::{Token, TokenType};
 
-use self::emphasis::tokenize_emphasis;
+static ABSOLUTE_URI_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^<[a-zA-Z][a-zA-Z0-9+.\-]{1,31}:[\w!\?/\+\-_~=;\.,\*&@#\$%\(\)'\[\]]+>").unwrap()
+});
+static EMAIL_ADDRESS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^<([a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*)>$",).unwrap()
+});
 
 pub(crate) fn tokenize(input: &str) -> Vec<Token> {
     let mut tokens: Vec<Token> = Vec::new();
@@ -44,6 +54,68 @@ pub(crate) fn tokenize(input: &str) -> Vec<Token> {
                 } else {
                     buffer.push_str(" ".repeat(count).as_str());
                 }
+            }
+            '`' => {
+                let is_head_of_line =
+                    is_head_of_line(&tokens, buffer.clone()) || buffer.chars().all(|c| c == ' ');
+                let mut count = 0;
+                while chars.peek() == Some(&'`') {
+                    count += 1;
+                    chars.next();
+                }
+
+                if count >= 3 && is_head_of_line {
+                    tokens.push(Token {
+                        token_type: TokenType::FencedCodeBlock,
+                        raw: "`".repeat(count),
+                    });
+                } else {
+                    if !buffer.is_empty() {
+                        tokens.push(Token {
+                            token_type: TokenType::Text,
+                            raw: buffer.clone(),
+                        });
+                        buffer.clear();
+                    }
+
+                    tokens.push(Token {
+                        token_type: TokenType::CodeSpan,
+                        raw: "`".repeat(count),
+                    });
+                }
+            }
+            '<' => {
+                let mut sub_buffer = String::new();
+                while chars.peek() != Some(&'>')
+                    && chars.peek() != Some(&'\n')
+                    && chars.peek() != None
+                {
+                    sub_buffer.push(chars.next().unwrap());
+                }
+                if let Some(c) = chars.next() {
+                    sub_buffer.push(c);
+                }
+
+                if ABSOLUTE_URI_REGEX.is_match(&sub_buffer)
+                    || EMAIL_ADDRESS_REGEX.is_match(&sub_buffer)
+                {
+                    if !buffer.is_empty() {
+                        tokens.push(Token {
+                            token_type: TokenType::Text,
+                            raw: buffer.clone(),
+                        });
+                        buffer.clear();
+                    }
+
+                    tokens.push(Token {
+                        token_type: TokenType::AutoLink,
+                        raw: sub_buffer,
+                    });
+
+                    continue;
+                }
+
+                tokenize_html(&mut tokens, &mut chars, &mut buffer, &mut sub_buffer);
             }
             '-' => {
                 let is_head_of_line = is_head_of_line(&tokens, buffer.clone());
@@ -202,11 +274,14 @@ fn is_head_of_line(tokens: &[Token], buffer: String) -> bool {
         return false;
     } else if !tokens.is_empty() {
         let token_type = &tokens.last().unwrap().token_type;
-        if token_type != &TokenType::SoftLineBreak
-            && token_type != &TokenType::HardLineBreak
-            && token_type != &TokenType::BlankLine
-        {
-            return false;
+        match token_type {
+            TokenType::SoftLineBreak
+            | TokenType::HardLineBreak
+            | TokenType::BlockQuote
+            | TokenType::BlankLine
+            | TokenType::ThemanticBreak
+            | TokenType::BulletListItem => return true,
+            _ => return false,
         }
     }
 
@@ -495,6 +570,174 @@ mod tests {
                 Token {
                     token_type: TokenType::Text,
                     raw: "ccc".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_fenced_code_block() {
+        // コードブロック
+        let input = "```\nHello, World!\n```\naaa```bbb```ccc";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    token_type: TokenType::FencedCodeBlock,
+                    raw: "```".to_string(),
+                },
+                Token {
+                    token_type: TokenType::SoftLineBreak,
+                    raw: "\n".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "Hello, World!".to_string(),
+                },
+                Token {
+                    token_type: TokenType::SoftLineBreak,
+                    raw: "\n".to_string(),
+                },
+                Token {
+                    token_type: TokenType::FencedCodeBlock,
+                    raw: "```".to_string(),
+                },
+                Token {
+                    token_type: TokenType::SoftLineBreak,
+                    raw: "\n".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "aaa".to_string(),
+                },
+                Token {
+                    token_type: TokenType::CodeSpan,
+                    raw: "```".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "bbb".to_string(),
+                },
+                Token {
+                    token_type: TokenType::CodeSpan,
+                    raw: "```".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "ccc".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_code_span() {
+        // コードスパン
+        let input = "`Hello, World!`\n``Hello, World!``";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    token_type: TokenType::CodeSpan,
+                    raw: "`".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "Hello, World!".to_string(),
+                },
+                Token {
+                    token_type: TokenType::CodeSpan,
+                    raw: "`".to_string(),
+                },
+                Token {
+                    token_type: TokenType::SoftLineBreak,
+                    raw: "\n".to_string(),
+                },
+                Token {
+                    token_type: TokenType::CodeSpan,
+                    raw: "``".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "Hello, World!".to_string(),
+                },
+                Token {
+                    token_type: TokenType::CodeSpan,
+                    raw: "``".to_string(),
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_auto_link() {
+        // 自動リンク
+        let input = "<https://example.com>\n<mailto:example@example>";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    token_type: TokenType::AutoLink,
+                    raw: "<https://example.com>".to_string(),
+                },
+                Token {
+                    token_type: TokenType::SoftLineBreak,
+                    raw: "\n".to_string(),
+                },
+                Token {
+                    token_type: TokenType::AutoLink,
+                    raw: "<mailto:example@example>".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_html_block() {
+        // HTMLブロック
+        let input = "<form>\nHello, World!\n</form>\n\n<blockquote>\nHello, World!\n</blockquote>";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    token_type: TokenType::HTMLBlock,
+                    raw: "<form>\nHello, World!\n</form>".to_string(),
+                },
+                Token {
+                    token_type: TokenType::HTMLBlock,
+                    raw: "<blockquote>\nHello, World!\n</blockquote>".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenize_inline_html() {
+        // インラインHTML
+        let input = "link: <a href=\"https://example.com\">Hello, World!</a>";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "link: ".to_string(),
+                },
+                Token {
+                    token_type: TokenType::RawHTML,
+                    raw: "<a href=\"https://example.com\">".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "Hello, World!".to_string(),
+                },
+                Token {
+                    token_type: TokenType::RawHTML,
+                    raw: "</a>".to_string(),
                 },
             ]
         );
