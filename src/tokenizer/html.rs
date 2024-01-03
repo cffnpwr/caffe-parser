@@ -24,9 +24,7 @@ pub(super) fn tokenize_html(
     prev_buffer: &mut String,
     buffer: &mut String,
 ) {
-    let token = if is_head_of_line(&tokens, prev_buffer.clone())
-        || prev_buffer.chars().all(|c| c == ' ')
-    {
+    let token = if is_head_of_line(&tokens, prev_buffer.clone()) {
         let end_condition = if let Some(caps) = HTMLBLOCK_TAG_BLOCK_START_REGEX.captures(&buffer) {
             let tag_name = caps.get(1).unwrap().as_str();
 
