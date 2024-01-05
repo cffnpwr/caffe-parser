@@ -386,6 +386,51 @@ pub(crate) fn tokenize(input: &str) -> Vec<Token> {
                     buffer.push(delimiter);
                 }
             }
+            '｜' => {
+                if !buffer.is_empty() {
+                    tokens.push(Token {
+                        token_type: TokenType::Text,
+                        raw: buffer.clone(),
+                    });
+                    buffer.clear();
+                }
+
+                tokens.push(Token {
+                    token_type: TokenType::RubyTargetOpening,
+                    raw: "｜".to_string(),
+                });
+                chars.next(); // skip '｜'
+            }
+            '《' => {
+                if !buffer.is_empty() {
+                    tokens.push(Token {
+                        token_type: TokenType::Text,
+                        raw: buffer.clone(),
+                    });
+                    buffer.clear();
+                }
+
+                tokens.push(Token {
+                    token_type: TokenType::RubyTextOpening,
+                    raw: "《".to_string(),
+                });
+                chars.next(); // skip '《'
+            }
+            '》' => {
+                if !buffer.is_empty() {
+                    tokens.push(Token {
+                        token_type: TokenType::Text,
+                        raw: buffer.clone(),
+                    });
+                    buffer.clear();
+                }
+
+                tokens.push(Token {
+                    token_type: TokenType::RubyTextClosing,
+                    raw: "》".to_string(),
+                });
+                chars.next(); // skip '》'
+            }
             '\\' => {
                 chars.next(); // skip '\\'
                 if chars.peek() == Some(&'\n') {
@@ -1043,6 +1088,66 @@ mod tests {
                 Token {
                     token_type: TokenType::Text,
                     raw: " Hello, World!".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ruby() {
+        // ルビ
+        let input = "｜Hello, World!《こんにちは、世界！》";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    token_type: TokenType::RubyTargetOpening,
+                    raw: "｜".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "Hello, World!".to_string(),
+                },
+                Token {
+                    token_type: TokenType::RubyTextOpening,
+                    raw: "《".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "こんにちは、世界！".to_string(),
+                },
+                Token {
+                    token_type: TokenType::RubyTextClosing,
+                    raw: "》".to_string(),
+                },
+            ]
+        );
+
+        let input = "こんにちは、世界《せかい》！";
+        let tokens = tokenize(input);
+        assert_eq!(
+            tokens,
+            vec![
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "こんにちは、世界".to_string(),
+                },
+                Token {
+                    token_type: TokenType::RubyTextOpening,
+                    raw: "《".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "せかい".to_string(),
+                },
+                Token {
+                    token_type: TokenType::RubyTextClosing,
+                    raw: "》".to_string(),
+                },
+                Token {
+                    token_type: TokenType::Text,
+                    raw: "！".to_string(),
                 },
             ]
         );

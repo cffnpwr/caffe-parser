@@ -33,6 +33,10 @@ pub(crate) enum ASTNode {
         title: Option<String>,
         alt: String,
     },
+    Ruby {
+        target: Vec<ASTNode>,
+        text: String,
+    },
 
     // Text
     Text(String),
@@ -42,7 +46,7 @@ pub(crate) enum ASTNode {
 pub(crate) enum ListType {
     Ordered,
     Unordered,
-    Checked,
+    CheckBox,
 }
 
 #[derive(Debug, Clone, PartialEq)]
